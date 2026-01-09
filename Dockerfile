@@ -43,4 +43,4 @@ COPY src/schemas.ts ./src/schemas.ts
 COPY migrations ./migrations
 
 # Default command
-CMD ["node", "dist/index.js"]
+CMD ["sh", "-lc", "pnpm db:migrate && node dist/index.js"]
