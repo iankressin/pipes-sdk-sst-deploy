@@ -5,21 +5,6 @@
 
 declare module "sst" {
   export interface Resource {
-    "Indexer": {
-      "service": string
-      "type": "sst.aws.Service"
-    }
-    "Postgres": {
-      "database": string
-      "host": string
-      "password": string
-      "port": number
-      "type": "sst.aws.Postgres"
-      "username": string
-    }
-    "Vpc": {
-      "type": "sst.aws.Vpc"
-    }
   }
 }
 /// <reference path="sst-env.d.ts" />

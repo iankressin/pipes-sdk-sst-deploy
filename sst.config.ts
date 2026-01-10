@@ -1,119 +1,144 @@
 /// <reference path="./.sst/platform/config.d.ts" />
 export default $config({
-    app(input) {
-      return {
-        name: 'pipes-sdk-deploy-test',
-        home: 'aws',
-        providers: { railway: '0.4.4' },
-      }
-    },
-    async run() {
-      // Create Railway provider with token from environment variable
-      const railwayProvider = new railway.Provider('RailwayProvider', {
-        token: process.env.RAILWAY_TOKEN,
-      })
+  app(input) {
+    return {
+      name: 'pipes-sdk-deploy-test',
+      home: 'local',
+      providers: { railway: '0.4.4' },
+    }
+  },
+  async run() {
+    // Create Railway provider with token from environment variable
+    const railwayProvider = new railway.Provider('RailwayProvider', {
+      token:
+        process.env.RAILWAY_TOKEN ??
+        (() => {
+          throw new Error('RAILWAY_TOKEN is not set')
+        })(),
+    })
 
-      const providerOpts = { provider: railwayProvider }
+    const providerOpts = { provider: railwayProvider }
 
-      /**
-       * Create Railway project
-       * Note: teamId (workspaceId) is required by Railway API
-       * Get your workspace ID from Railway dashboard: Cmd/Ctrl + K -> "Copy Active Workspace ID"
-       */
-      const project = new railway.Project('PipesProject', {
-        name: 'pipes-sdk-deploy-test',
-        teamId: process.env.RAILWAY_TEAM_ID,
-      }, providerOpts)
-  
-      /**
-       * Get or create environment (Railway projects have a default environment)
-       * You can also create a custom environment if needed
-       */
-      const environment = new railway.Environment('Production', {
-        name: 'production',
-        projectId: project.id,
-      }, providerOpts)
-  
-      // Deploy Postgres as a service using Postgres Docker image
-      const postgres = new railway.Service('Postgres', {
-        name: 'postgres',
+    /**
+     * Create Railway project
+     * Note: teamId (workspaceId) is required by Railway API
+     * Get your workspace ID from Railway dashboard: Cmd/Ctrl + K -> "Copy Active Workspace ID"
+     */
+    const project = new railway.Project(
+      'pipes-project',
+      {
+        name: 'pipes-project',
+        teamId:
+          process.env.RAILWAY_TEAM_ID ??
+          (() => {
+            throw new Error('RAILWAY_TEAM_ID is not set')
+          })(),
+      },
+      providerOpts,
+    )
+
+    // const environment = railway.Environment.get(
+    //   'production',
+    //   process.env.RAILWAY_ENVIRONMENT_ID ??
+    //     (() => {
+    //       throw new Error('RAILWAY_ENVIRONMENT_ID is not set')
+    //     })(),
+    //   {
+    //     projectId: project.id,
+    //   },
+    //   providerOpts,
+    // )
+    const environmentId = project.defaultEnvironment.id
+
+    /**
+     * Postgres environment variables
+     * Note: Railway will automatically expose these as service variables
+     * You'll need to set them via railway.Variable after service creation
+     */
+    const postgres = new railway.Service(
+      'Postgres',
+      {
+        name: 'Postgres',
         projectId: project.id,
         sourceImage: 'postgres:17',
-        /**
-         * Postgres environment variables
-         * Note: Railway will automatically expose these as service variables
-         * You'll need to set them via railway.Variable after service creation
-         */
-      }, providerOpts)
-  
-      // Set Postgres environment variables
-      new railway.Variable('PostgresUser', {
-        environmentId: environment.id,
+      },
+      providerOpts,
+    )
+
+    const pguser = new railway.Variable(
+      'PostgresUser',
+      {
+        environmentId,
         serviceId: postgres.id,
         name: 'POSTGRES_USER',
         value: 'postgres',
-      }, providerOpts)
-  
-      new railway.Variable('PostgresPassword', {
-        environmentId: environment.id,
+      },
+      providerOpts,
+    )
+    const pgpassword = new railway.Variable(
+      'PostgresPassword',
+      {
+        environmentId,
         serviceId: postgres.id,
         name: 'POSTGRES_PASSWORD',
         value: 'password',
-      }, providerOpts)
-  
-      new railway.Variable('PostgresDb', {
-        environmentId: environment.id,
+      },
+      providerOpts,
+    )
+    const pgdb = new railway.Variable(
+      'PostgresDb',
+      {
+        environmentId,
         serviceId: postgres.id,
         name: 'POSTGRES_DB',
         value: 'pipes',
-      }, providerOpts)
-  
-      /**
-       * Railway provides service URLs via environment variables
-       * You'll need to reference the postgres service's internal URL
-       */
-      const dbConnectionString = $interpolate`postgresql://postgres:password@${postgres.name}:5432/pipes`
-  
-      // Deploy Indexer service from Docker image
-      const indexer = new railway.Service('Indexer', {
-        name: 'indexer',
+      },
+      providerOpts,
+    )
+
+    // biome-ignore lint: Railway variable syntax
+    const postgresUrl = $interpolate`postgresql://${pguser.value}:${pgpassword.value}@${'${{ Postgres.RAILWAY_PRIVATE_DOMAIN }}'}:5432/${pgdb.value}`
+
+    // Deploy Indexer service from Docker image
+    const indexer = new railway.Service(
+      'swaps-and-transfers',
+      {
+        name: 'swaps-and-transfers',
         projectId: project.id,
         /**
          * If you want to build from a GitHub repo
-         * Make sure to have your Github account linked to Railway
-        */
+         * Make sure to have your Github account linked to Railway and
+         * Railway has permission to access the repo
+         */
         sourceRepo: 'iankressin/pipes-sdk-sst-deploy',
         sourceRepoBranch: 'main',
 
         /**
          * If you want to build from a Docker image, use the following:
-         * 
+         *
          * sourceImage: 'your-registry/indexer:latest',
          * sourceImageRegistryUsername: 'your-registry-username',
          * sourceImageRegistryPassword: 'your-registry-password',
          */
-      }, providerOpts)
-  
-      // Set database connection string for indexer
-      new railway.Variable('IndexerDbConnection', {
-        environmentId: environment.id,
+      },
+      providerOpts,
+    )
+
+    new railway.Variable(
+      'indexer-db-connection',
+      {
+        environmentId,
         serviceId: indexer.id,
         name: 'DB_CONNECTION_STR',
-        value: dbConnectionString,
-      }, providerOpts)
-  
-      // Set other indexer environment variables if needed
-      new railway.Variable('IndexerNodeEnv', {
-        environmentId: environment.id,
-        serviceId: indexer.id,
-        name: 'NODE_ENV',
-        value: 'production',
-      }, providerOpts)
-  
-      return {
-        projectId: project.id,
-        postgresServiceId: postgres.id,
-        indexerServiceId: indexer.id,
-      }
-    },
-  })
+        value: postgresUrl,
+      },
+      providerOpts,
+    )
+
+    return {
+      projectId: project.id,
+      postgresServiceId: postgres.id,
+      indexerServiceId: indexer.id,
+    }
+  },
+})

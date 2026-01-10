@@ -133,7 +133,7 @@ deploy_to_railway() {
   
   # Add indexer service
   echo "Adding indexer service..."
-  railway add -s indexer -r "$GITHUB_REPO" -v 'DB_CONNECTION_STR=${{Postgres.DATABASE_URL}}' || {
+  railway add -s indexer -r "$GITHUB_REPO" -v "DB_CONNECTION_STR=\${{Postgres.DATABASE_URL}}" || {
     echo -e "${YELLOW}⚠${NC} Service may already exist, continuing..."
   }
   echo ""
